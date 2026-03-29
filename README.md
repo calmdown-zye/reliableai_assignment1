@@ -65,7 +65,6 @@ eps    MNIST_FGSM_T  MNIST_FGSM_U  ...
 ```
 
 ### Saved Files (results/)
-각 공격 방법별로 5개 샘플의 시각화가 저장됩니다:
 - `mnist_FGSM_targeted_sample0~4.png`
 - `mnist_FGSM_untargeted_sample0~4.png`
 - `mnist_PGD_targeted_sample0~4.png`
@@ -76,5 +75,4 @@ eps    MNIST_FGSM_T  MNIST_FGSM_U  ...
 - `cifar_PGD_untargeted_sample0~4.png`
 - `cifar_FGSM_T_eps{0.05/0.1/0.2/0.3}_sample0~4.png` (ε별 비교용)
 
-각 PNG는 원본 이미지(예측 레이블) / Adversarial 이미지(오분류 레이블) /
-Perturbation(×10 확대)을 나란히 표시합니다.
+
