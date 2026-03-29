@@ -3,12 +3,15 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
-
+import os
+import matplotlib.pyplot as plt
 
 from models.mnist_model import MNISTClassifier
 from torchvision import datasets, transforms
 from models.cifar_model import get_cifar_model
 
+from attacks.fgsm import fgsm_targeted, fgsm_untargeted
+from attacks.pgd import pgd_targeted, pgd_untargeted
 
 
 
@@ -16,11 +19,11 @@ from models.cifar_model import get_cifar_model
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# ── MNIST data load ───────────────────────────────────
+
+## MNIST 학습
 def get_mnist_loaders(batch_size=64):
     transform = transforms.Compose([
-        transforms.ToTensor(),              # [0,255] → [0,1]
-        transforms.Normalize((0.1307,), (0.3081,))  # MNIST 평균/표준편차
+        transforms.ToTensor()            # [0,255] → [0,1]  
     ])
     train_set = datasets.MNIST(root='./data', train=True,
                                 download=True, transform=transform)
@@ -30,7 +33,7 @@ def get_mnist_loaders(batch_size=64):
     test_loader  = DataLoader(test_set,  batch_size=batch_size, shuffle=False)
     return train_loader, test_loader
 
-# ── 학습 함수 ───────────────────────────────────────────
+
 def train_mnist(model, train_loader, epochs=5):
     model.train()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -61,14 +64,10 @@ def get_cifar_loaders(batch_size=64):
     transform_train = transforms.Compose([
         transforms.RandomHorizontalFlip(),       # 데이터 증강
         transforms.RandomCrop(32, padding=4),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010))
+        transforms.ToTensor()
     ])
     transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010))
+        transforms.ToTensor()
     ])
     train_set = datasets.CIFAR10(root='./data', train=True,
                                   download=True, transform=transform_train)
@@ -114,6 +113,117 @@ def evaluate(model, test_loader):
     print(f"Test Accuracy: {accuracy:.2f}%")
     return accuracy
 
+
+# ── Attack success rate 측정 ────────────────────────────
+def evaluate_attack(model, test_loader, attack_fn, attack_kwargs,
+                    targeted=False, target_class=None, n_samples=100):
+    """
+    attack_fn    : 공격 함수
+    attack_kwargs: 공격 함수에 넘길 인자 (eps 등)
+    targeted     : targeted 공격 여부
+    n_samples    : 평가할 샘플 수
+    """
+    model.eval()
+    success = 0
+    total = 0
+
+    for images, labels in test_loader:
+        if total >= n_samples:
+            break
+
+        images, labels = images.to(device), labels.to(device)
+
+        for i in range(len(images)):
+            if total >= n_samples:
+                break
+
+            x = images[i:i+1]   # (1, C, H, W)
+            label = labels[i:i+1]
+
+            # targeted: 정답이 아닌 target class 설정
+            if targeted:
+                target = torch.tensor(
+                    [(label.item() + 1) % 10]
+                ).to(device)
+                x_adv = attack_fn(model, x, target, **attack_kwargs)
+                pred = model(x_adv).argmax(dim=1)
+                if pred.item() == target.item():
+                    success += 1
+            else:
+                x_adv = attack_fn(model, x, label, **attack_kwargs)
+                pred = model(x_adv).argmax(dim=1)
+                if pred.item() != label.item():
+                    success += 1
+
+            total += 1
+
+    rate = 100 * success / total
+    return rate
+
+# ── 시각화 저장 ─────────────────────────────────────────
+def save_visualizations(model, test_loader, attack_fn, attack_kwargs,
+                        targeted, save_dir, prefix, n=5):
+    """
+    원본 / adversarial / perturbation 을 나란히 저장
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    model.eval()
+    count = 0
+
+    for images, labels in test_loader:
+        if count >= n:
+            break
+        images, labels = images.to(device), labels.to(device)
+
+        for i in range(len(images)):
+            if count >= n:
+                break
+
+            x = images[i:i+1]
+            label = labels[i:i+1]
+
+            if targeted:
+                target = torch.tensor(
+                    [(label.item() + 1) % 10]
+                ).to(device)
+                x_adv = attack_fn(model, x, target, **attack_kwargs)
+            else:
+                x_adv = attack_fn(model, x, label, **attack_kwargs)
+
+            # 예측값
+            pred_orig = model(x).argmax(dim=1).item()
+            pred_adv  = model(x_adv).argmax(dim=1).item()
+
+            # perturbation 시각화 (차이를 10배 확대)
+            perturb = (x_adv - x).abs() * 10
+
+            # CPU로 이동 후 numpy 변환
+            def to_img(t):
+                t = t.squeeze().cpu().detach()
+                if t.dim() == 3:       # CIFAR: (3, H, W)
+                    return t.permute(1, 2, 0).numpy().clip(0, 1)
+                else:                  # MNIST: (H, W)
+                    return t.numpy().clip(0, 1)
+
+            fig, axes = plt.subplots(1, 3, figsize=(10, 3))
+            axes[0].imshow(to_img(x),       cmap='gray' if x.shape[1]==1 else None)
+            axes[0].set_title(f"Original\npred: {pred_orig}")
+            axes[1].imshow(to_img(x_adv),   cmap='gray' if x.shape[1]==1 else None)
+            axes[1].set_title(f"Adversarial\npred: {pred_adv}")
+            axes[2].imshow(to_img(perturb),  cmap='gray' if x.shape[1]==1 else None)
+            axes[2].set_title("Perturbation (×10)")
+
+            for ax in axes:
+                ax.axis('off')
+
+            plt.tight_layout()
+            path = os.path.join(save_dir, f"{prefix}_sample{count}.png")
+            plt.savefig(path)
+            plt.close()
+            count += 1
+
+    print(f"  시각화 저장 완료: {save_dir}/{prefix}_sample0~{n-1}.png")
+
 # ── 메인 ────────────────────────────────────────────────
 if __name__ == "__main__":
     train_loader, test_loader = get_mnist_loaders()
@@ -142,7 +252,40 @@ if __name__ == "__main__":
         torch.save(cifar_model.state_dict(), "cifar_model.pth")
         print("모델 저장 완료: cifar_model.pth")
     else:
-        print(f"정확도 부족 ({cifar_acc:.2f}%). 학습 재시도 필요.")       
+        print(f"정확도 부족 ({cifar_acc:.2f}%). 학습 재시도 필요.")  
+        
+    
+    
+    # ── 공격 평가 ──────────────────────────────────────
+    print("\n=== 공격 평가 시작 ===")
+
+    attacks_config = [
+        ("FGSM targeted",   fgsm_targeted,   {"eps": 0.1}, True),
+        ("FGSM untargeted", fgsm_untargeted, {"eps": 0.1}, False),
+        ("PGD targeted",    pgd_targeted,
+         {"k": 40, "eps": 0.3, "eps_step": 0.01}, True),
+        ("PGD untargeted",  pgd_untargeted,
+         {"k": 40, "eps": 0.3, "eps_step": 0.01}, False),
+    ]
+
+    for name, fn, kwargs, targeted in attacks_config:
+        print(f"\n[MNIST] {name}")
+        rate = evaluate_attack(mnist_model, test_loader,
+                               fn, kwargs, targeted, n_samples=100)
+        print(f"  Success rate: {rate:.1f}%")
+        save_visualizations(mnist_model, test_loader,
+                            fn, kwargs, targeted,
+                            save_dir="results",
+                            prefix=f"mnist_{name.replace(' ', '_')}")
+
+        print(f"[CIFAR-10] {name}")
+        rate = evaluate_attack(cifar_model, cifar_test_loader,
+                               fn, kwargs, targeted, n_samples=100)
+        print(f"  Success rate: {rate:.1f}%")
+        save_visualizations(cifar_model, cifar_test_loader,
+                            fn, kwargs, targeted,
+                            save_dir="results",
+                            prefix=f"cifar_{name.replace(' ', '_')}")     
         
         
 
