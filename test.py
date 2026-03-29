@@ -227,46 +227,59 @@ def save_visualizations(model, test_loader, attack_fn, attack_kwargs,
     print(f"  시각화 저장 완료: {save_dir}/{prefix}_sample0~{n-1}.png")
 
 # ── 메인 ────────────────────────────────────────────────
+# ── 메인 ────────────────────────────────────────────────
 if __name__ == "__main__":
-    train_loader, test_loader = get_mnist_loaders()
 
-    # MNIST 학습
-    print("\n=== MNIST 학습 시작 ===")
+    # ── MNIST ──────────────────────────────────────────
+    print("\n=== MNIST ===")
     mnist_model = MNISTClassifier().to(device)
-    train_mnist(mnist_model, train_loader, epochs=5)
-    acc = evaluate(mnist_model, test_loader)
 
-    # 모델 저장 (나중에 공격 때 재사용)
-    if acc >= 95:
-        torch.save(mnist_model.state_dict(), "mnist_model.pth")
-        print("모델 저장 완료: mnist_model.pth")
+    if os.path.exists("mnist_model.pth"):
+        mnist_model.load_state_dict(torch.load("mnist_model.pth", map_location=device))
+        print("저장된 모델 로드 완료")
     else:
-        print(f"정확도 부족 ({acc:.2f}%). 학습 재시도 필요.")
-        
-    # CIFAR-10 학습
-    print("\n=== CIFAR-10 학습 시작 ===")
+        train_loader, test_loader = get_mnist_loaders()
+        print("학습 시작...")
+        train_mnist(mnist_model, train_loader, epochs=5)
+        acc = evaluate(mnist_model, test_loader)
+        if acc >= 95:
+            torch.save(mnist_model.state_dict(), "mnist_model.pth")
+            print(f"모델 저장 완료: mnist_model.pth ({acc:.2f}%)")
+        else:
+            print(f"정확도 부족 ({acc:.2f}%). 학습 재시도 필요.")
+
+    train_loader, test_loader = get_mnist_loaders()
+    evaluate(mnist_model, test_loader)
+
+    # ── CIFAR-10 ────────────────────────────────────────
+    print("\n=== CIFAR-10 ===")
     cifar_model = get_cifar_model(device)
     cifar_train_loader, cifar_test_loader = get_cifar_loaders()
-    train_cifar(cifar_model, cifar_train_loader, epochs=10)
-    cifar_acc = evaluate(cifar_model, cifar_test_loader)
 
-    if cifar_acc >= 80:
-        torch.save(cifar_model.state_dict(), "cifar_model.pth")
-        print("모델 저장 완료: cifar_model.pth")
+    if os.path.exists("cifar_model.pth"):
+        cifar_model.load_state_dict(torch.load("cifar_model.pth", map_location=device))
+        print("저장된 모델 로드 완료")
     else:
-        print(f"정확도 부족 ({cifar_acc:.2f}%). 학습 재시도 필요.")  
-        
-    
-    
+        print("학습 시작...")
+        train_cifar(cifar_model, cifar_train_loader, epochs=10)
+        cifar_acc = evaluate(cifar_model, cifar_test_loader)
+        if cifar_acc >= 80:
+            torch.save(cifar_model.state_dict(), "cifar_model.pth")
+            print(f"모델 저장 완료: cifar_model.pth ({cifar_acc:.2f}%)")
+        else:
+            print(f"정확도 부족 ({cifar_acc:.2f}%). 학습 재시도 필요.")
+
+    evaluate(cifar_model, cifar_test_loader)
+
     # ── 공격 평가 ──────────────────────────────────────
     print("\n=== 공격 평가 시작 ===")
 
     attacks_config = [
-        ("FGSM targeted",   fgsm_targeted,   {"eps": 0.1}, True),
-        ("FGSM untargeted", fgsm_untargeted, {"eps": 0.1}, False),
-        ("PGD targeted",    pgd_targeted,
+        ("FGSM_targeted",   fgsm_targeted,   {"eps": 0.1}, True),
+        ("FGSM_untargeted", fgsm_untargeted, {"eps": 0.1}, False),
+        ("PGD_targeted",    pgd_targeted,
          {"k": 40, "eps": 0.3, "eps_step": 0.01}, True),
-        ("PGD untargeted",  pgd_untargeted,
+        ("PGD_untargeted",  pgd_untargeted,
          {"k": 40, "eps": 0.3, "eps_step": 0.01}, False),
     ]
 
@@ -278,7 +291,7 @@ if __name__ == "__main__":
         save_visualizations(mnist_model, test_loader,
                             fn, kwargs, targeted,
                             save_dir="results",
-                            prefix=f"mnist_{name.replace(' ', '_')}")
+                            prefix=f"mnist_{name}")
 
         print(f"[CIFAR-10] {name}")
         rate = evaluate_attack(cifar_model, cifar_test_loader,
@@ -287,7 +300,38 @@ if __name__ == "__main__":
         save_visualizations(cifar_model, cifar_test_loader,
                             fn, kwargs, targeted,
                             save_dir="results",
-                            prefix=f"cifar_{name.replace(' ', '_')}")     
+                            prefix=f"cifar_{name}")
+
+    # ── ε 테이블 실험 (report용) ─────────────────────────
+    print("\n=== ε 테이블 실험 ===")
+    eps_values = [0.05, 0.1, 0.2, 0.3]
+
+    print(f"\n{'eps':<6} {'MNIST_FGSM_T':>12} {'MNIST_FGSM_U':>12} {'MNIST_PGD_T':>11} {'MNIST_PGD_U':>11} {'CIFAR_FGSM_T':>12} {'CIFAR_FGSM_U':>12} {'CIFAR_PGD_T':>11} {'CIFAR_PGD_U':>11}")
+    print("-" * 105)
+
+    for eps in eps_values:
+        m_fgsm_t = evaluate_attack(mnist_model, test_loader, fgsm_targeted,
+                                    {"eps": eps}, targeted=True, n_samples=100)
+        m_fgsm_u = evaluate_attack(mnist_model, test_loader, fgsm_untargeted,
+                                    {"eps": eps}, targeted=False, n_samples=100)
+        m_pgd_t  = evaluate_attack(mnist_model, test_loader, pgd_targeted,
+                                    {"k": 40, "eps": eps, "eps_step": eps/10},
+                                    targeted=True, n_samples=100)
+        m_pgd_u  = evaluate_attack(mnist_model, test_loader, pgd_untargeted,
+                                    {"k": 40, "eps": eps, "eps_step": eps/10},
+                                    targeted=False, n_samples=100)
+        c_fgsm_t = evaluate_attack(cifar_model, cifar_test_loader, fgsm_targeted,
+                                    {"eps": eps}, targeted=True, n_samples=100)
+        c_fgsm_u = evaluate_attack(cifar_model, cifar_test_loader, fgsm_untargeted,
+                                    {"eps": eps}, targeted=False, n_samples=100)
+        c_pgd_t  = evaluate_attack(cifar_model, cifar_test_loader, pgd_targeted,
+                                    {"k": 40, "eps": eps, "eps_step": eps/10},
+                                    targeted=True, n_samples=100)
+        c_pgd_u  = evaluate_attack(cifar_model, cifar_test_loader, pgd_untargeted,
+                                    {"k": 40, "eps": eps, "eps_step": eps/10},
+                                    targeted=False, n_samples=100)
+
+        print(f"{eps:<6} {m_fgsm_t:>11.1f}% {m_fgsm_u:>11.1f}% {m_pgd_t:>10.1f}% {m_pgd_u:>10.1f}% {c_fgsm_t:>11.1f}% {c_fgsm_u:>11.1f}% {c_pgd_t:>10.1f}% {c_pgd_u:>10.1f}%", flush=True)
         
         
 
