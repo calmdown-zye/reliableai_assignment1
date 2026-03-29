@@ -3,13 +3,20 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
+
+
 from models.mnist_model import MNISTClassifier
+from torchvision import datasets, transforms
+from models.cifar_model import get_cifar_model
+
+
+
 
 # ── 디바이스 설정 ──────────────────────────────────────
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# ── MNIST 데이터 로드 ───────────────────────────────────
+# ── MNIST data load ───────────────────────────────────
 def get_mnist_loaders(batch_size=64):
     transform = transforms.Compose([
         transforms.ToTensor(),              # [0,255] → [0,1]
@@ -41,6 +48,53 @@ def train_mnist(model, train_loader, epochs=5):
             optimizer.step()
             total_loss += loss.item()
 
+        print(f"Epoch [{epoch+1}/{epochs}]  "
+              f"Loss: {total_loss/len(train_loader):.4f}")
+
+
+
+
+## CIFAR-10 학습
+
+def get_cifar_loaders(batch_size=64):
+    # CIFAR-10 전처리 (ResNet 입력 기준)
+    transform_train = transforms.Compose([
+        transforms.RandomHorizontalFlip(),       # 데이터 증강
+        transforms.RandomCrop(32, padding=4),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010))
+    ])
+    transform_test = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010))
+    ])
+    train_set = datasets.CIFAR10(root='./data', train=True,
+                                  download=True, transform=transform_train)
+    test_set  = datasets.CIFAR10(root='./data', train=False,
+                                  download=True, transform=transform_test)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    test_loader  = DataLoader(test_set,  batch_size=batch_size, shuffle=False)
+    return train_loader, test_loader
+
+def train_cifar(model, train_loader, epochs=10):
+    model.train()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    criterion = nn.CrossEntropyLoss()
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+
+    for epoch in range(epochs):
+        total_loss = 0
+        for images, labels in train_loader:
+            images, labels = images.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+        scheduler.step()
         print(f"Epoch [{epoch+1}/{epochs}]  "
               f"Loss: {total_loss/len(train_loader):.4f}")
 
@@ -76,3 +130,19 @@ if __name__ == "__main__":
         print("모델 저장 완료: mnist_model.pth")
     else:
         print(f"정확도 부족 ({acc:.2f}%). 학습 재시도 필요.")
+        
+    # CIFAR-10 학습
+    print("\n=== CIFAR-10 학습 시작 ===")
+    cifar_model = get_cifar_model(device)
+    cifar_train_loader, cifar_test_loader = get_cifar_loaders()
+    train_cifar(cifar_model, cifar_train_loader, epochs=10)
+    cifar_acc = evaluate(cifar_model, cifar_test_loader)
+
+    if cifar_acc >= 80:
+        torch.save(cifar_model.state_dict(), "cifar_model.pth")
+        print("모델 저장 완료: cifar_model.pth")
+    else:
+        print(f"정확도 부족 ({cifar_acc:.2f}%). 학습 재시도 필요.")       
+        
+        
+
