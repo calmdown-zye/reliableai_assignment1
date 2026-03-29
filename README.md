@@ -39,3 +39,42 @@ MNIST and CIFAR-10 are automatically downloaded when running test.py.
 └── requirements.txt
 ```
 
+## Output Description
+
+### Terminal Output
+```
+=== MNIST ===
+Test Accuracy: 99.01%
+
+=== CIFAR-10 ===
+Test Accuracy: 85.67%
+
+=== 공격 평가 시작 ===
+[MNIST] FGSM_targeted
+  Success rate: 0.0%
+[CIFAR-10] FGSM_targeted
+  Success rate: 28.0%
+...
+
+=== ε 테이블 실험 ===
+eps    MNIST_FGSM_T  MNIST_FGSM_U  ...
+0.05         0.0%          4.0%  ...
+0.1          0.0%         11.0%  ...
+0.2         14.0%         49.0%  ...
+0.3         39.0%         74.0%  ...
+```
+
+### Saved Files (results/)
+각 공격 방법별로 5개 샘플의 시각화가 저장됩니다:
+- `mnist_FGSM_targeted_sample0~4.png`
+- `mnist_FGSM_untargeted_sample0~4.png`
+- `mnist_PGD_targeted_sample0~4.png`
+- `mnist_PGD_untargeted_sample0~4.png`
+- `cifar_FGSM_targeted_sample0~4.png`
+- `cifar_FGSM_untargeted_sample0~4.png`
+- `cifar_PGD_targeted_sample0~4.png`
+- `cifar_PGD_untargeted_sample0~4.png`
+- `cifar_FGSM_T_eps{0.05/0.1/0.2/0.3}_sample0~4.png` (ε별 비교용)
+
+각 PNG는 원본 이미지(예측 레이블) / Adversarial 이미지(오분류 레이블) /
+Perturbation(×10 확대)을 나란히 표시합니다.
