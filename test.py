@@ -334,4 +334,19 @@ if __name__ == "__main__":
         print(f"{eps:<6} {m_fgsm_t:>11.1f}% {m_fgsm_u:>11.1f}% {m_pgd_t:>10.1f}% {m_pgd_u:>10.1f}% {c_fgsm_t:>11.1f}% {c_fgsm_u:>11.1f}% {c_pgd_t:>10.1f}% {c_pgd_u:>10.1f}%", flush=True)
         
         
+        
+        # ── ε별 시각화 저장 (CIFAR FGSM targeted) ──────────────
+        print("\n=== ε별 시각화 저장 ===")
+        for eps in [0.05, 0.1, 0.2, 0.3]:
+            save_visualizations(
+                cifar_model, cifar_test_loader,
+                fgsm_targeted, {"eps": eps},
+                targeted=True,
+                save_dir="results",
+                prefix=f"cifar_FGSM_T_eps{eps}",
+                n=5
+            )
+            print(f"ε={eps} 저장 완료", flush=True)
+            
+            
 
