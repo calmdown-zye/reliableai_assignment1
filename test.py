@@ -16,7 +16,9 @@ from attacks.pgd import pgd_targeted, pgd_untargeted
 
 
 # ── 디바이스 설정 ──────────────────────────────────────
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() 
+                       else "mps" if torch.backends.mps.is_available() 
+                       else "cpu")
 print(f"Using device: {device}")
 
 
