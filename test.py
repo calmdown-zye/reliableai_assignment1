@@ -25,7 +25,7 @@ print(f"Using device: {device}")
 ## MNIST 학습
 def get_mnist_loaders(batch_size=64):
     transform = transforms.Compose([
-        transforms.ToTensor()            # [0,255] → [0,1]  
+        transforms.ToTensor()            
     ])
     train_set = datasets.MNIST(root='./data', train=True,
                                 download=True, transform=transform)
@@ -226,7 +226,7 @@ def save_visualizations(model, test_loader, attack_fn, attack_kwargs,
 
     print(f"  시각화 저장 완료: {save_dir}/{prefix}_sample0~{n-1}.png")
 
-# ── 메인 ────────────────────────────────────────────────
+
 # ── 메인 ────────────────────────────────────────────────
 if __name__ == "__main__":
 
