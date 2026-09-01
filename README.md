@@ -74,4 +74,7 @@ eps    MNIST_FGSM_T  MNIST_FGSM_U  ...
 - `cifar_PGD_untargeted_sample0~4.png`
 - `cifar_FGSM_T_eps{0.05/0.1/0.2/0.3}_sample0~4.png` (ε별 비교용)
 
+### Acknowledgement
+This repository was developed with support from the 서울시립대학교 데이터 사이언스 플러스 차세대 융합인재 양성사업단 - http://dsplus.uos.ac.kr/
+
 
