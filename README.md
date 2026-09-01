@@ -1,6 +1,5 @@
-# Assignment 1: Adversarial Attacks on Neural Networks
-# (26 Spring) 신뢰할수있는인공지능
-# 통계데이터사이언스학과 G202558003 김지혜
+# Adversarial Attacks on Neural Networks
+
 
 
 ## Overview
